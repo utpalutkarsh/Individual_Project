@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TaskFlow Pro – Transparent Charts (Fixed Pie)</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<style>
+html, body {
+  margin:0; padding:0;
+  width:100%; height:100%;
+  overflow:hidden;
+  font-family:'Segoe UI', sans-serif;
+  background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)),
+              url("Wallpaper.jpg") no-repeat center center fixed;
+  background-size:cover;
+  color:white;
+}
+*{box-sizing:border-box;}
+body{display:flex;}
+
+.sidebar{
+  width:220px;
+  background:rgba(0,0,0,0.92);
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.sidebar h2{color:#2ecc71;}
+
+.nav-item{
+  padding:8px;
+  border-radius:6px;
+  cursor:pointer;
+}
+.nav-item:hover{background:rgba(255,255,255,0.1);}
+
+.main{
+  flex:1;
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+  overflow:hidden;
+}
+
+.top-bar{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.card{
+  background:rgba(255,255,255,0.08);
+  padding:10px;
+  border-radius:8px;
+  text-align:center;
+  font-size:14px;
+}
+
+.progress-bar-global{
+  background:#333;
+  border-radius:6px;
+  overflow:hidden;
+  margin-bottom:10px;
+}
+.progress-fill-global{
+  height:8px;
+  background:#2ecc71;
+  width:0%;
+}
+
+.inputs{
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr 1fr 1fr;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+input,select,button{
+  padding:8px;
+  border-radius:6px;
+  border:none;
+  font-size:13px;
+  width:100%;
+}
+
+button{
+  background:#27ae60;
+  color:white;
+  cursor:pointer;
+}
+
+.content{
+  display:grid;
+  grid-template-columns:2fr 1fr;
+  gap:15px;
+  flex:1;
+  min-height:0;
+  overflow:hidden;
+}
+
+.task-list{
+  list-style:none;
+  padding:10px;
+  margin:0;
+  overflow-y:auto;
+  background:rgba(255,255,255,0.05);
+  border-radius:8px;
+}
+
+.task-item{
+  background:rgba(255,255,255,0.1);
+  padding:8px;
+  margin-bottom:8px;
+  border-radius:6px;
+  font-size:13px;
+}
+
+.task-header{
+  display:flex;
+  justify-content:space-between;
+}
+
+.progress-container{
+  background:#333;
+  border-radius:4px;
+  overflow:hidden;
+  height:6px;
+  margin-top:5px;
+}
+
+.progress-fill{
+  background:#2ecc71;
+  height:100%;
+}
+
+.delete-btn{
+  background:#e74c3c;
+  border:none;
+  width:28px;     /* smaller width */
+  height:24px;    /* smaller height */
+  border-radius:4px;
+  color:white;
+  cursor:pointer;
+  font-size:11px;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* 🔥 FIX: Remove forced height distortion */
+canvas{
+  width:100% !important;
+  background:transparent !important;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+  <h2>TaskFlow</h2>
+  <div class="nav-item">🏠 Dashboard" onclick="showAllTasks()</div>
+  <div class="nav-item">📋 All Tasks" onclick="showAllTasks()</div>
+  <div class="nav-item">⏰ Today" onclick="showTodayTasks()</div>
+  <div class="nav-item">🚨 Overdue" onclick="showOverdue()</div>
+  <div class="nav-item">⭐ High Priority" onclick="showHighPriority()</div>
+  <button onclick="exportCSV()">Export CSV</button>
+</div>
+
+<div class="main">
+
+<div class="top-bar">
+  <div class="card"><strong id="totalTasks">0</strong><br>Total</div>
+  <div class="card"><strong id="completedTasks">0</strong><br>Completed</div>
+  <div class="card"><strong id="avgProgress">0%</strong><br>Avg Progress</div>
+  <div class="card"><strong id="pendingTasks">0</strong><br>Pending</div>
+</div>
+
+<div class="progress-bar-global">
+  <div class="progress-fill-global" id="globalBar"></div>
+</div>
+
+<div class="inputs">
+  <input type="text" id="taskInput" placeholder="Task">
+  <input type="date" id="dueDate">
+  <input type="time" id="dueTime">
+  <select id="priority">
+    <option value="Low">Low</option>
+    <option value="Medium">Medium</option>
+    <option value="High">High</option>
+  </select>
+  <input type="number" id="progressInput" placeholder="% Done" min="0" max="100">
+</div>
+
+<button onclick="addTask()">Add Task</button>
+
+<div class="content">
+  <ul id="taskList" class="task-list"></ul>
+  <canvas id="priorityChart"></canvas>
+</div>
+
+</div>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+let chart;
+
+function saveTasks(){ localStorage.setItem("tasks", JSON.stringify(tasks)); }
+
+function updateStats(){
+  const total=tasks.length;
+  const completed=tasks.filter(t=>t.progress==100).length;
+  const pending=total-completed;
+  const avg=total===0?0:Math.round(tasks.reduce((s,t)=>s+t.progress,0)/total);
+
+  totalTasks.innerText=total;
+  completedTasks.innerText=completed;
+  pendingTasks.innerText=pending;
+  avgProgress.innerText=avg+"%";
+  globalBar.style.width=avg+"%";
+}
+
+function renderTasks(){
+  taskList.innerHTML="";
+  tasks.forEach((task,index)=>{
+    const li=document.createElement("li");
+    li.className="task-item";
+    li.innerHTML=`
+      <div class="task-header">
+        <span><strong>${task.text}</strong> (${task.dueDate} ${task.dueTime})</span>
+        <button class="delete-btn" onclick="deleteTask(${index})">X</button>
+      </div>
+      <div>${task.priority}</div>
+      <input type="range" min="0" max="100" value="${task.progress}" 
+        onchange="updateProgress(${index}, this.value)">
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${task.progress}%"></div>
+      </div>
+      <small>${task.progress}% Complete</small>
+    `;
+    taskList.appendChild(li);
+  });
+  updateStats();
+  updateChart();
+}
+
+function updateProgress(index,value){
+  tasks[index].progress=parseInt(value);
+  saveTasks();
+  
+
+/* ===== Sidebar Filters ===== */
+
+function showAllTasks() {
+  renderTasks();
+}
+
+function showToday" onclick="showTodayTasks()Tasks() {
+  const today = new Date().toISOString().split('T')[0];
+  renderTasks(today);
+}
+
+function showHighPriority() {
+  renderTasks(null, "High");
+}
+
+function showOverdue" onclick="showOverdue()() {
+  const today = new Date().toISOString().split('T')[0];
+  const filtered = tasks.filter(t => t.dueDate < today);
+  renderTasksCustom(filtered);
+}
+
+function renderTasks(dateFilter = null, priorityFilter = null) {
+  taskList.innerHTML = "";
+  let filtered = tasks;
+
+  if (dateFilter) {
+    filtered = filtered.filter(t => t.dueDate === dateFilter);
+  }
+
+  if (priorityFilter) {
+    filtered = filtered.filter(t => t.priority === priorityFilter);
+  }
+
+  renderTasksCustom(filtered);
+}
+
+function renderTasksCustom(taskArray) {
+  taskList.innerHTML = "";
+  taskArray.forEach((task,index)=>{
+    const progressDeg = task.progress * 3.6;
+    const li=document.createElement("li");
+    li.className="task-item";
+    li.innerHTML=`
+      <div class="task-header">
+        <span><strong>${task.text}</strong> (${task.dueDate} ${task.dueTime})</span>
+        <button class="delete-btn" onclick="deleteTask(${index})">X</button>
+      </div>
+      <div>${task.priority}</div>
+      <input type="range" min="0" max="100" value="${task.progress}" 
+        onchange="updateProgress(${index}, this.value)">
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${task.progress}%"></div>
+      </div>
+      <small>${task.progress}% Complete</small>
+    `;
+    taskList.appendChild(li);
+  });
+}
+
+
+renderTasks();
+}
+
+function addTask(){
+  const text=taskInput.value.trim();
+  if(!text)return;
+
+  const now=new Date();
+  const year=now.getFullYear();
+  const month=String(now.getMonth()+1).padStart(2,'0');
+  const day=String(now.getDate()).padStart(2,'0');
+  const hours=String(now.getHours()).padStart(2,'0');
+  const minutes=String(now.getMinutes()).padStart(2,'0');
+
+  tasks.push({
+    text,
+    dueDate:`${year}-${month}-${day}`,
+    dueTime:`${hours}:${minutes}`,
+    priority:priority.value,
+    progress:parseInt(progressInput.value)||0
+  });
+
+  taskInput.value="";
+  progressInput.value="";
+  saveTasks();
+  
+
+/* ===== Sidebar Filters ===== */
+
+function showAllTasks() {
+  renderTasks();
+}
+
+function showToday" onclick="showTodayTasks()Tasks() {
+  const today = new Date().toISOString().split('T')[0];
+  renderTasks(today);
+}
+
+function showHighPriority() {
+  renderTasks(null, "High");
+}
+
+function showOverdue" onclick="showOverdue()() {
+  const today = new Date().toISOString().split('T')[0];
+  const filtered = tasks.filter(t => t.dueDate < today);
+  renderTasksCustom(filtered);
+}
+
+function renderTasks(dateFilter = null, priorityFilter = null) {
+  taskList.innerHTML = "";
+  let filtered = tasks;
+
+  if (dateFilter) {
+    filtered = filtered.filter(t => t.dueDate === dateFilter);
+  }
+
+  if (priorityFilter) {
+    filtered = filtered.filter(t => t.priority === priorityFilter);
+  }
+
+  renderTasksCustom(filtered);
+}
+
+function renderTasksCustom(taskArray) {
+  taskList.innerHTML = "";
+  taskArray.forEach((task,index)=>{
+    const progressDeg = task.progress * 3.6;
+    const li=document.createElement("li");
+    li.className="task-item";
+    li.innerHTML=`
+      <div class="task-header">
+        <span><strong>${task.text}</strong> (${task.dueDate} ${task.dueTime})</span>
+        <button class="delete-btn" onclick="deleteTask(${index})">X</button>
+      </div>
+      <div>${task.priority}</div>
+      <input type="range" min="0" max="100" value="${task.progress}" 
+        onchange="updateProgress(${index}, this.value)">
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${task.progress}%"></div>
+      </div>
+      <small>${task.progress}% Complete</small>
+    `;
+    taskList.appendChild(li);
+  });
+}
+
+
+renderTasks();
+}
+
+function deleteTask(i){
+  tasks.splice(i,1);
+  saveTasks();
+  
+
+/* ===== Sidebar Filters ===== */
+
+function showAllTasks() {
+  renderTasks();
+}
+
+function showToday" onclick="showTodayTasks()Tasks() {
+  const today = new Date().toISOString().split('T')[0];
+  renderTasks(today);
+}
+
+function showHighPriority() {
+  renderTasks(null, "High");
+}
+
+function showOverdue" onclick="showOverdue()() {
+  const today = new Date().toISOString().split('T')[0];
+  const filtered = tasks.filter(t => t.dueDate < today);
+  renderTasksCustom(filtered);
+}
+
+function renderTasks(dateFilter = null, priorityFilter = null) {
+  taskList.innerHTML = "";
+  let filtered = tasks;
+
+  if (dateFilter) {
+    filtered = filtered.filter(t => t.dueDate === dateFilter);
+  }
+
+  if (priorityFilter) {
+    filtered = filtered.filter(t => t.priority === priorityFilter);
+  }
+
+  renderTasksCustom(filtered);
+}
+
+function renderTasksCustom(taskArray) {
+  taskList.innerHTML = "";
+  taskArray.forEach((task,index)=>{
+    const progressDeg = task.progress * 3.6;
+    const li=document.createElement("li");
+    li.className="task-item";
+    li.innerHTML=`
+      <div class="task-header">
+        <span><strong>${task.text}</strong> (${task.dueDate} ${task.dueTime})</span>
+        <button class="delete-btn" onclick="deleteTask(${index})">X</button>
+      </div>
+      <div>${task.priority}</div>
+      <input type="range" min="0" max="100" value="${task.progress}" 
+        onchange="updateProgress(${index}, this.value)">
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${task.progress}%"></div>
+      </div>
+      <small>${task.progress}% Complete</small>
+    `;
+    taskList.appendChild(li);
+  });
+}
+
+
+renderTasks();
+}
+
+function exportCSV(){
+  let csv="Task,Date,Time,Priority,Progress\n";
+  tasks.forEach(t=>{
+    csv+=`${t.text},${t.dueDate},${t.dueTime},${t.priority},${t.progress}%\n`;
+  });
+  const blob=new Blob([csv],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="tasks.csv";
+  a.click();
+}
+
+function updateChart(){
+  const count={Low:0,Medium:0,High:0};
+  tasks.forEach(t=>count[t.priority]++);
+  if(chart)chart.destroy();
+  chart=new Chart(priorityChart,{
+    type:'pie',
+    data:{labels:Object.keys(count),datasets:[{data:Object.values(count)}]},
+    options:{
+      responsive:true,
+      maintainAspectRatio:true,
+      aspectRatio:1   /* 🔥 Forces perfect circle */
+    }
+  });
+}
+
+new Sortable(taskList,{animation:150});
+
+
+/* ===== Sidebar Filters ===== */
+
+function showAllTasks() {
+  renderTasks();
+}
+
+function showToday" onclick="showTodayTasks()Tasks() {
+  const today = new Date().toISOString().split('T')[0];
+  renderTasks(today);
+}
+
+function showHighPriority() {
+  renderTasks(null, "High");
+}
+
+function showOverdue" onclick="showOverdue()() {
+  const today = new Date().toISOString().split('T')[0];
+  const filtered = tasks.filter(t => t.dueDate < today);
+  renderTasksCustom(filtered);
+}
+
+function renderTasks(dateFilter = null, priorityFilter = null) {
+  taskList.innerHTML = "";
+  let filtered = tasks;
+
+  if (dateFilter) {
+    filtered = filtered.filter(t => t.dueDate === dateFilter);
+  }
+
+  if (priorityFilter) {
+    filtered = filtered.filter(t => t.priority === priorityFilter);
+  }
+
+  renderTasksCustom(filtered);
+}
+
+function renderTasksCustom(taskArray) {
+  taskList.innerHTML = "";
+  taskArray.forEach((task,index)=>{
+    const progressDeg = task.progress * 3.6;
+    const li=document.createElement("li");
+    li.className="task-item";
+    li.innerHTML=`
+      <div class="task-header">
+        <span><strong>${task.text}</strong> (${task.dueDate} ${task.dueTime})</span>
+        <button class="delete-btn" onclick="deleteTask(${index})">X</button>
+      </div>
+      <div>${task.priority}</div>
+      <input type="range" min="0" max="100" value="${task.progress}" 
+        onchange="updateProgress(${index}, this.value)">
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${task.progress}%"></div>
+      </div>
+      <small>${task.progress}% Complete</small>
+    `;
+    taskList.appendChild(li);
+  });
+}
+
+
+renderTasks();
+</script>
+
+</body>
+</html>
