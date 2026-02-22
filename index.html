@@ -1,0 +1,235 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Advanced Checklist App</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-color: rgba(0,0,0,0.75);
+      --text-color: white;
+      --accent: #27ae60;
+    }
+
+    body.light {
+      --bg-color: #f4f6f9;
+      --card-color: rgba(255,255,255,0.95);
+      --text-color: black;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+                  url("Wallpaper.jpg") no-repeat center center fixed;
+      background-size: cover;
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      width: 420px;
+      background: var(--card-color);
+      backdrop-filter: blur(8px);
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      border-radius: 6px;
+      border: none;
+      width: 100%;
+    }
+
+    button {
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+
+    .add-btn {
+      background: var(--accent);
+      color: white;
+      width: 100%;
+    }
+
+    .toggle-btn {
+      background: #555;
+      color: white;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+
+    .stats {
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 15px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    li {
+      background: rgba(255,255,255,0.1);
+      padding: 8px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .task-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .completed {
+      text-decoration: line-through;
+      color: #bbb;
+    }
+
+    .high { color: #e74c3c; }
+    .medium { color: #f39c12; }
+    .low { color: #2ecc71; }
+
+    .delete-btn {
+      background: #c0392b;
+      color: white;
+      font-size: 12px;
+    }
+
+    .overdue {
+      border-left: 4px solid red;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+  <h2>Advanced Checklist</h2>
+
+  <button class="toggle-btn" onclick="toggleTheme()">Toggle Dark / Light</button>
+
+  <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()">
+
+  <input type="text" id="taskInput" placeholder="Task description">
+  <input type="date" id="dueDate">
+  
+  <select id="priority">
+    <option value="low">Low Priority</option>
+    <option value="medium">Medium Priority</option>
+    <option value="high">High Priority</option>
+  </select>
+
+  <button class="add-btn" onclick="addTask()">Add Task</button>
+
+  <div class="stats" id="stats"></div>
+
+  <ul id="taskList"></ul>
+</div>
+
+<script>
+  let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+  function saveTasks() {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+  }
+
+  function toggleTheme() {
+    document.body.classList.toggle("light");
+  }
+
+  function updateStats() {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const pending = total - completed;
+    document.getElementById("stats").innerText =
+      `Total: ${total} | Completed: ${completed} | Pending: ${pending}`;
+  }
+
+  function renderTasks() {
+    const list = document.getElementById("taskList");
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    list.innerHTML = "";
+
+    tasks
+      .filter(task => task.text.toLowerCase().includes(search))
+      .forEach((task, index) => {
+
+        const li = document.createElement("li");
+
+        if (task.dueDate && new Date(task.dueDate) < new Date() && !task.completed) {
+          li.classList.add("overdue");
+        }
+
+        const topDiv = document.createElement("div");
+        topDiv.className = "task-top";
+
+        const span = document.createElement("span");
+        span.textContent = task.text + " (Due: " + (task.dueDate || "N/A") + ")";
+        span.classList.add(task.priority);
+        if (task.completed) span.classList.add("completed");
+
+        span.onclick = function() {
+          task.completed = !task.completed;
+          saveTasks();
+          renderTasks();
+        };
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Delete";
+        deleteBtn.className = "delete-btn";
+        deleteBtn.onclick = function() {
+          tasks.splice(index, 1);
+          saveTasks();
+          renderTasks();
+        };
+
+        topDiv.appendChild(span);
+        topDiv.appendChild(deleteBtn);
+        li.appendChild(topDiv);
+        list.appendChild(li);
+      });
+
+    updateStats();
+  }
+
+  function addTask() {
+    const text = document.getElementById("taskInput").value.trim();
+    const dueDate = document.getElementById("dueDate").value;
+    const priority = document.getElementById("priority").value;
+
+    if (text === "") return;
+
+    tasks.push({ text, dueDate, priority, completed: false });
+    saveTasks();
+    document.getElementById("taskInput").value = "";
+    renderTasks();
+  }
+
+  renderTasks();
+</script>
+
+</body>
+</html>
