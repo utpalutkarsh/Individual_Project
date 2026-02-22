@@ -1,0 +1,256 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TaskFlow – Smart Productivity Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+                  url("Wallpaper.jpg") no-repeat center center fixed;
+      background-size: cover;
+      color: white;
+      display: flex;
+      justify-content: center;
+      padding: 30px;
+    }
+
+    .container {
+      width: 650px;
+      background: rgba(0,0,0,0.85);
+      padding: 25px;
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+    }
+
+    h2 { text-align: center; }
+
+    input, select, button {
+      padding: 8px;
+      margin: 6px 0;
+      border-radius: 6px;
+      border: none;
+      width: 100%;
+    }
+
+    button {
+      background: #27ae60;
+      color: white;
+      cursor: pointer;
+    }
+
+    .progress-bar {
+      background: #333;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    .progress-fill {
+      height: 10px;
+      background: #2ecc71;
+      width: 0%;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      min-height: 50px;
+    }
+
+    li {
+      background: rgba(255,255,255,0.12);
+      padding: 10px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: grab;
+    }
+
+    .completed {
+      text-decoration: line-through;
+      color: #bbb;
+    }
+
+    .charts {
+      margin-top: 20px;
+    }
+
+    canvas {
+      background: white;
+      border-radius: 8px;
+      margin-top: 15px;
+      padding: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+  <h2>TaskFlow – Smart Productivity Dashboard</h2>
+
+  <input type="text" id="taskInput" placeholder="Task description">
+  <input type="date" id="dueDate">
+
+  <select id="priority">
+    <option value="Low">Low Priority</option>
+    <option value="Medium">Medium Priority</option>
+    <option value="High">High Priority</option>
+  </select>
+
+  <select id="category">
+    <option value="Study">Study</option>
+    <option value="Work">Work</option>
+    <option value="Personal">Personal</option>
+    <option value="Finance">Finance</option>
+  </select>
+
+  <button onclick="addTask()">Add Task</button>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <p id="stats"></p>
+
+  <ul id="taskList"></ul>
+
+  <div class="charts">
+    <canvas id="priorityChart"></canvas>
+    <canvas id="categoryChart"></canvas>
+  </div>
+
+</div>
+
+<script>
+
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+function saveTasks() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+}
+
+function updateStats() {
+  const total = tasks.length;
+  const completed = tasks.filter(t => t.completed).length;
+  const percent = total === 0 ? 0 : (completed / total) * 100;
+
+  document.getElementById("stats").innerText =
+    `Total: ${total} | Completed: ${completed} | Pending: ${total - completed}`;
+
+  document.getElementById("progressFill").style.width = percent + "%";
+}
+
+function renderTasks() {
+  const list = document.getElementById("taskList");
+  list.innerHTML = "";
+
+  tasks.forEach((task, index) => {
+    const li = document.createElement("li");
+
+    const span = document.createElement("span");
+    span.textContent = `${task.text} (${task.priority} | ${task.category})`;
+    if (task.completed) span.classList.add("completed");
+
+    span.onclick = function() {
+      task.completed = !task.completed;
+      saveTasks();
+      renderTasks();
+      updateCharts();
+    };
+
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.style.width = "auto";
+    del.onclick = function() {
+      tasks.splice(index, 1);
+      saveTasks();
+      renderTasks();
+      updateCharts();
+    };
+
+    li.appendChild(span);
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+
+  updateStats();
+}
+
+function addTask() {
+  const text = document.getElementById("taskInput").value.trim();
+  const dueDate = document.getElementById("dueDate").value;
+  const priority = document.getElementById("priority").value;
+  const category = document.getElementById("category").value;
+
+  if (!text) return;
+
+  tasks.push({ text, dueDate, priority, category, completed: false });
+  saveTasks();
+  document.getElementById("taskInput").value = "";
+  renderTasks();
+  updateCharts();
+}
+
+new Sortable(document.getElementById("taskList"), {
+  animation: 150,
+  onEnd: function (evt) {
+    const movedItem = tasks.splice(evt.oldIndex, 1)[0];
+    tasks.splice(evt.newIndex, 0, movedItem);
+    saveTasks();
+  }
+});
+
+let priorityChart, categoryChart;
+
+function updateCharts() {
+  const priorityCount = { Low:0, Medium:0, High:0 };
+  const categoryCount = { Study:0, Work:0, Personal:0, Finance:0 };
+
+  tasks.forEach(t => {
+    priorityCount[t.priority]++;
+    categoryCount[t.category]++;
+  });
+
+  if (priorityChart) priorityChart.destroy();
+  if (categoryChart) categoryChart.destroy();
+
+  priorityChart = new Chart(document.getElementById("priorityChart"), {
+    type: 'pie',
+    data: {
+      labels: Object.keys(priorityCount),
+      datasets: [{
+        data: Object.values(priorityCount)
+      }]
+    }
+  });
+
+  categoryChart = new Chart(document.getElementById("categoryChart"), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(categoryCount),
+      datasets: [{
+        data: Object.values(categoryCount)
+      }]
+    }
+  });
+}
+
+renderTasks();
+updateCharts();
+
+</script>
+
+</body>
+</html>
